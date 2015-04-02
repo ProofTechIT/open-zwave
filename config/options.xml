@@ -2,7 +2,7 @@
 <!-- To be effective, this file should be placed in the user data folder specified in the Options::Create method -->
 <Options xmlns='http://code.google.com/p/open-zwave/'>
   <Option name="logging" value="true" />
-  <Option name="ConsoleOutput" value="false" />
+  <Option name="ConsoleOutput" value="true" />
   <Option name="LogFileName" value="../logs/inwion-gate.log" />
   <Option name="AppendLogFile" value="true" />
 
