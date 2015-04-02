@@ -45,6 +45,8 @@ namespace OpenZWave
 		LogImpl( string const& _filename, bool const _bAppendLog, bool const _bConsoleOutput, LogLevel const _saveLevel, LogLevel const _queueLevel, LogLevel const _dumpTrigger );
 		~LogImpl();
 
+		void openFile();
+
 		void Write( LogLevel _level, uint8 const _nodeId, char const* _format, va_list _args );
 		void Queue( char const* _buffer );
 		void QueueDump();

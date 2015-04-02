@@ -54,18 +54,23 @@ LogImpl::LogImpl
 	m_queueLevel( _queueLevel ),				// level of messages to log to queue
 	m_dumpTrigger( _dumpTrigger )				// dump queued messages when this level is seen
 {
-	if ( !m_bAppendLog )
-	{
+	openFile();
+	setlinebuf(stdout);	// To prevent buffering and lock contention issues
+}
+
+
+void LogImpl::openFile()
+{
+	if ( !m_bAppendLog ) {
 		this->pFile = fopen( m_filename.c_str(), "w" );
 	} else {
 		this->pFile = fopen( m_filename.c_str(), "a" );
 	}
-	if( this->pFile == NULL )
-	{
+	if( this->pFile == NULL ) {
 		std::cerr << "Could Not Open OZW Log File." << std::endl;
 	}
-	setlinebuf(stdout);	// To prevent buffering and lock contention issues
 }
+
 
 //-----------------------------------------------------------------------------
 //	<LogImpl::~LogImpl>
@@ -130,7 +135,8 @@ void LogImpl::Write
 				if( this->pFile != NULL )
 				{
 					fputs( outBuf.c_str(), pFile );
-					fflush(pFile);
+					fclose(pFile);
+					openFile();
 				}
 				if( m_bConsoleOutput )
 				{
