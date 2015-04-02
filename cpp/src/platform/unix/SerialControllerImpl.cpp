@@ -131,10 +131,13 @@ void SerialControllerImpl::ReadThreadProc
 (
 	Event* _exitEvent
 )
-{  
+{
+	Log::Write(LogLevel_Debug,"%#x, [+ SerialControllerImpl::ReadThreadProc]",this);
+
 	uint32 attempts = 0;
 	while( true )
 	{
+		Log::Write(LogLevel_Debug,"%#x, SerialControllerImpl::Init: %d",this,attempts);
 		// Init must have been called successfully during Open, so we
 		// don't do it again until the end of the loop
 		if( -1 != m_hSerialController )
@@ -168,6 +171,8 @@ void SerialControllerImpl::ReadThreadProc
 
 		Init( ++attempts );
 	}
+
+	Log::Write(LogLevel_Debug,"%#x, [- SerialControllerImpl::ReadThreadProc]",this);
 }
 
 //-----------------------------------------------------------------------------
@@ -313,17 +318,24 @@ void SerialControllerImpl::Read
 )
 {
 	uint8 buffer[256];
+	uint loop_count = 0;
 
-	while( 1 )
-        {
+	Log::Write(LogLevel_Debug, "%#x, [+ SerialControllerImpl::Read]",this);
+	while( 1 ) {
+
+
 		int32 bytesRead;
 		int err;
+
+		++loop_count;
+		Log::Write(LogLevel_Debug, "%#x, SerialControllerImpl loop: %d", this, loop_count);
 
 		do
 		{
 			bytesRead = read( m_hSerialController, buffer, sizeof(buffer) );
 			if( bytesRead > 0 )
 				m_owner->Put( buffer, bytesRead );
+//			Log::Write(LogLevel_StreamDetail, "%#x, SerialControllerImpl loop: %d, bytesRead: %d",this, loop_count, bytesRead);
 		} while( bytesRead > 0 );
 
 		do
@@ -343,6 +355,7 @@ void SerialControllerImpl::Read
 			pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
 		} while( err <= 0 );
 	}
+	Log::Write(LogLevel_Debug, "%#x, [- SerialControllerImpl::Read]",this);
 }
 
 //-----------------------------------------------------------------------------

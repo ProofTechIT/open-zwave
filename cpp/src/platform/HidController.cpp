@@ -204,7 +204,8 @@ void HidController::ThreadProc
 (
 	Event* _exitEvent
 )
-{  
+{
+	Log::Write(LogLevel_Debug,"[+ ThreadProc]");
 	uint32 attempts = 0;
 	while( true )
 	{
@@ -241,6 +242,7 @@ void HidController::ThreadProc
 
 		Init( ++attempts );
 	}
+	Log::Write(LogLevel_Debug,"[- ThreadProc]");
 }
 
 //-----------------------------------------------------------------------------

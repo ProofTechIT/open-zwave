@@ -7,8 +7,8 @@
   <Option name="AppendLogFile" value="true" />
 
   <!-- logs -->
-  <Option name="SaveLogLevel" value="9" />
-  <!--<Option name="QueueLogLevel" value="9" />-->
+  <Option name="SaveLogLevel" value="10" />
+  <!--<Option name="QueueLogLevel" value="10" />-->
   <Option name="DumpTrigger" value="0" />
 
   <Option name="Associate" value="true" />

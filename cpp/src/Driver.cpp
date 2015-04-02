@@ -396,9 +396,13 @@ void Driver::DriverThreadProc
 			int retryTimeout = RETRY_TIMEOUT;
 			Options::Get()->GetOptionAsInt( "RetryTimeout", &retryTimeout );
 
+			uint loop_count = 0;
+
 			while( true )
 			{
-				Log::Write( LogLevel_StreamDetail, "      Top of DriverThreadProc loop." );
+				++loop_count;
+				Log::Write(LogLevel_Debug, "%#x, Top of DriverThreadProc loop: %u", this, loop_count);
+
 				uint32 count = 11;
 				int32 timeout = Wait::Timeout_Infinite;
 
@@ -4009,9 +4013,18 @@ void Driver::PollThreadProc
 	Event* _exitEvent
 )
 {
+	Log::Write(LogLevel_Debug,"%#x, [+ Driver::PollThreadProc]",this);
+
+	uint loop_count = 0;
+
 	while( 1 )
 	{
 		int32 pollInterval = m_pollInterval;
+
+		++loop_count;
+		if (loop_count % 60*2 == 0) {
+			Log::Write(LogLevel_Debug,"%#x, Driver::PollThreadProc loop: %u",this, loop_count);
+		}
 
 		if( m_awakeNodesQueried && !m_pollList.empty() )
 		{
@@ -4137,6 +4150,7 @@ void Driver::PollThreadProc
 			}
 		}
 	}
+	Log::Write(LogLevel_Debug,"%#x, [- Driver::PollThreadProc]",this);
 }
 
 //-----------------------------------------------------------------------------
