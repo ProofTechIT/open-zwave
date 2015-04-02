@@ -401,7 +401,9 @@ void Driver::DriverThreadProc
 			while( true )
 			{
 				++loop_count;
-				Log::Write(LogLevel_Debug, "%#x, Top of DriverThreadProc loop: %u", this, loop_count);
+				if (loop_count % 1000 == 0) {
+					Log::Write(LogLevel_Debug, "%#x, Top of DriverThreadProc loop: %u", this, loop_count);
+				}
 
 				uint32 count = 11;
 				int32 timeout = Wait::Timeout_Infinite;
@@ -470,6 +472,7 @@ void Driver::DriverThreadProc
 						if( WriteNextMsg( (MsgQueue)(res-3) ) )
 						{
 							retryTimeStamp.SetTime( retryTimeout );
+							usleep(10*1000);
 						}
 						break;
 					}
