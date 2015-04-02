@@ -35,7 +35,7 @@
   </CommandClass>
 
   <!-- Basic set as report -->
-  <CommandClass id="32" setasreport="true"/>
+  <CommandClass id="32" setasreport="false"/>
 
   <!-- COMMAND_CLASS_ASSOCIATION. Groups -->
   <CommandClass id="133">
