@@ -130,6 +130,7 @@ void LogImpl::Write
 				if( this->pFile != NULL )
 				{
 					fputs( outBuf.c_str(), pFile );
+					fflush(pFile);
 				}
 				if( m_bConsoleOutput )
 				{
