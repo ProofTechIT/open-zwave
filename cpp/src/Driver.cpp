@@ -244,9 +244,10 @@ Driver::~Driver
 	LogDriverStatistics();
 
 	// Save the driver config before deleting anything else
-	bool save;
+	bool save = true;
 	if( Options::Get()->GetOptionAsBool( "SaveConfiguration", &save) )
 	{
+		Log::Write(LogLevel_Always,"SaveConfiguration");
 		if( save )
 		{
 			WriteConfig();
