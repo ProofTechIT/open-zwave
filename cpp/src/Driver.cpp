@@ -619,6 +619,8 @@ bool Driver::ReadConfig
 	snprintf( str, sizeof(str), "zwcfg_0x%08x.xml", m_homeId );
 	string filename =  userPath + string(str);
 
+	Log::Write(LogLevel_Debug,"ReadConfig: %s",filename.c_str());
+
 	TiXmlDocument doc;
 	if( !doc.LoadFile( filename.c_str(), TIXML_ENCODING_UTF8 ) )
 	{
