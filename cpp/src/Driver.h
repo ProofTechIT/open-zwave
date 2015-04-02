@@ -210,6 +210,7 @@ namespace OpenZWave
 			return count;
 		}
 
+public:
 		/**
 		 *  A version of GetNode that does not have the protective "lock" and "release" requirement.
 		 *  This function can be used within driverThread, which "knows" that the node will not be
@@ -230,6 +231,7 @@ namespace OpenZWave
 		 *  \see LockNodes, ReleaseNodes
 		 */
 		Node* GetNode( uint8 _nodeId );
+
 		/**
 		 *  Lock the nodes so no other thread can modify them.
 		 */
@@ -239,6 +241,7 @@ namespace OpenZWave
 		 */
 		void ReleaseNodes();
 
+private:
 		ControllerInterface			m_controllerInterfaceType;						// Specifies the controller's hardware interface
 		string					m_controllerPath;							// name or path used to open the controller hardware.
 		Controller*				m_controller;								// Handles communications with the controller hardware.

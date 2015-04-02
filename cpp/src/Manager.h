@@ -339,8 +339,9 @@ namespace OpenZWave
 		string GetControllerPath( uint32 const _homeId );
 	/*@}*/
 
-	private:
 		Driver* GetDriver( uint32 const _homeId );	/**< Get a pointer to a Driver object from the HomeID.  Only to be used by OpenZWave. */
+
+	private:
 		void SetDriverReady( Driver* _driver, bool success );		/**< Indicate that the Driver is ready to be used, and send the notification callback. */
 
 OPENZWAVE_EXPORT_WARNINGS_OFF
