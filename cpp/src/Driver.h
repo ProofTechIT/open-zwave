@@ -665,6 +665,7 @@ OPENZWAVE_EXPORT_WARNINGS_ON
 		//		at regular intervals.  These are of the lowest priority, and are only
 		//		sent when nothing else is going on
 		//
+	public:
 		enum MsgQueueCmd
 		{
 			MsgQueueCmd_SendMsg = 0,
@@ -712,10 +713,13 @@ OPENZWAVE_EXPORT_WARNINGS_ON
 			ControllerCommandItem*		m_cci;
 		};
 
+		const list<MsgQueueItem>* getMsgQueues() const {return m_msgQueue;}
+
+	private:
 OPENZWAVE_EXPORT_WARNINGS_OFF
-		list<MsgQueueItem>			m_msgQueue[MsgQueue_Count];
+		list<MsgQueueItem>		m_msgQueue[MsgQueue_Count];
 OPENZWAVE_EXPORT_WARNINGS_ON
-		Event*					m_queueEvent[MsgQueue_Count];				// Events for each queue, which are signalled when the queue is not empty
+		Event*					m_queueEvent[MsgQueue_Count];		// Events for each queue, which are signalled when the queue is not empty
 		Mutex*					m_sendMutex;						// Serialize access to the queues
 		Msg*					m_currentMsg;
 		MsgQueue				m_currentMsgQueueSource;			// identifies which queue held m_currentMsg

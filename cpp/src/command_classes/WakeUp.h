@@ -38,6 +38,8 @@ namespace OpenZWave
 	class ValueInt;
 	class Mutex;
 
+	typedef list<Driver::MsgQueueItem> PendingQueue;
+
 	/** \brief Implements COMMAND_CLASS_WAKE_UP (0x84), a Z-Wave device command class.
 	 */
 	class WakeUp: public CommandClass
@@ -67,17 +69,19 @@ namespace OpenZWave
 
 		virtual uint8 GetMaxVersion(){ return 2; }
 
+		const PendingQueue& pendingQueue() const {return m_pendingQueue;}
+
 	protected:
 		virtual void CreateVars( uint8 const _instance );
 
 	private:
 		WakeUp( uint32 const _homeId, uint8 const _nodeId );
 
-		Mutex*						m_mutex;			// Serialize access to the pending queue
-		list<Driver::MsgQueueItem>	m_pendingQueue;		// Messages waiting to be sent when the device wakes up
-		bool						m_awake;
-		bool						m_pollRequired;
-		bool						m_notification;
+		Mutex*			m_mutex;			// Serialize access to the pending queue
+		PendingQueue	m_pendingQueue;		// Messages waiting to be sent when the device wakes up
+		bool			m_awake;
+		bool			m_pollRequired;
+		bool			m_notification;
 	};
 
 } // namespace OpenZWave
