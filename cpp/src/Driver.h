@@ -232,15 +232,6 @@ public:
 		 */
 		Node* GetNode( uint8 _nodeId );
 
-		/**
-		 *  Lock the nodes so no other thread can modify them.
-		 */
-		void LockNodes();
-		/**
-		 *  Release the lock on the nodes so other threads can modify them.
-		 */
-		void ReleaseNodes();
-
 private:
 		ControllerInterface			m_controllerInterfaceType;						// Specifies the controller's hardware interface
 		string					m_controllerPath;							// name or path used to open the controller hardware.
@@ -262,8 +253,11 @@ private:
 		uint8					m_controllerCaps;							// Set of flags indicating the controller's capabilities (See IsInclusionController above).
 		uint8					m_nodeId;									// Z-Wave Controller's own node ID.
 		Node*					m_nodes[256];								// Array containing all the node objects.
+
+public:
 		Mutex*					m_nodeMutex;								// Serializes access to node data
 
+private:
 		ControllerReplication*	m_controllerReplication;					// Controller replication is handled separately from the other command classes, due to older hand-held controllers using invalid node IDs.
 
 		uint8					m_transmitOptions;

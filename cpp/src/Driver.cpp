@@ -278,20 +278,20 @@ Driver::~Driver
 	}
 
 	// Clear the node data
-	LockNodes();
-	for( int i=0; i<256; ++i )
 	{
-		if( GetNodeUnsafe( i ) )
+		LockGuard LG(m_nodeMutex);
+		for( int i=0; i<256; ++i )
 		{
-			delete m_nodes[i];
-			m_nodes[i] = NULL;
-			Notification* notification = new Notification( Notification::Type_NodeRemoved );
-			notification->SetHomeAndNodeIds( m_homeId, i );
-			QueueNotification( notification );
+			if( GetNodeUnsafe( i ) )
+			{
+				delete m_nodes[i];
+				m_nodes[i] = NULL;
+				Notification* notification = new Notification( Notification::Type_NodeRemoved );
+				notification->SetHomeAndNodeIds( m_homeId, i );
+				QueueNotification( notification );
+			}
 		}
 	}
-	ReleaseNodes();
-
 	// Don't release until all nodes have removed their poll values
 	m_pollMutex->Release();
 
@@ -330,10 +330,12 @@ Driver::~Driver
 			NotifyWatchers();
 		}
 	}
+
+	if (m_controllerReplication)
+		delete m_controllerReplication;
+
 	m_notificationsEvent->Release();
 	m_nodeMutex->Release();
-
-	delete m_controllerReplication;
 }
 
 //-----------------------------------------------------------------------------
@@ -704,7 +706,7 @@ bool Driver::ReadConfig
 	}
 
 	// Read the nodes
-	LockNodes();
+	LockGuard LG(m_nodeMutex);
 	TiXmlElement const* nodeElement = driverElement->FirstChildElement();
 	while( nodeElement )
 	{
@@ -730,7 +732,7 @@ bool Driver::ReadConfig
 		nodeElement = nodeElement->NextSiblingElement();
 	}
 
-	ReleaseNodes();
+	LG.Unlock();
 
 	// restore the previous state (for now, polling) for the nodes/values just retrieved
 	for( int i=0; i<256; i++ )
@@ -795,16 +797,17 @@ void Driver::WriteConfig
 	snprintf( str, sizeof(str), "%d", (int) m_bIntervalBetweenPolls );
 	driverElement->SetAttribute( "poll_interval_between", str );
 
-	LockNodes();
-	for( int i=0; i<256; ++i )
 	{
-		if( m_nodes[i] )
+		LockGuard LG(m_nodeMutex);
+
+		for( int i=0; i<256; ++i )
 		{
-			m_nodes[i]->WriteXML( driverElement );
+			if( m_nodes[i] )
+			{
+				m_nodes[i]->WriteXML( driverElement );
+			}
 		}
 	}
-	ReleaseNodes();
-
 	string userPath;
 	Options::Get()->GetOptionAsString( "UserPath", &userPath );
 
@@ -844,16 +847,19 @@ Node* Driver::GetNode
 	uint8 _nodeId
 )
 {
-	LockNodes();
+	if (m_nodeMutex->IsSignalled()) {
+		Log::Write(LogLevel_Error, _nodeId, "Driver Thread is Not Locked during Call to GetNode");
+		return NULL;
+	}
 	if( Node* node = m_nodes[_nodeId] )
 	{
 		return node;
 	}
 
-	ReleaseNodes();
 	return NULL;
 }
 
+#if 0
 //-----------------------------------------------------------------------------
 // <Driver::LockNodes>
 // Lock the nodes so that no other thread can modify them
@@ -875,7 +881,7 @@ void Driver::ReleaseNodes
 {
 	m_nodeMutex->Unlock();
 }
-
+#endif
 //-----------------------------------------------------------------------------
 //	Sending Z-Wave messages
 //-----------------------------------------------------------------------------
@@ -896,6 +902,7 @@ void Driver::SendQueryStageComplete
 	item.m_queryStage = _stage;
 	item.m_retry = false;
 
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		if( !node->IsListeningDevice() )
@@ -908,7 +915,6 @@ void Driver::SendQueryStageComplete
 					Log::Write( LogLevel_Info, "" );
 					Log::Write( LogLevel_Detail, node->GetNodeId(), "Queuing (%s) Query Stage Complete (%s)", c_sendQueueNames[MsgQueue_WakeUp], node->GetQueryStageName( _stage ).c_str() );
 					wakeUp->QueueMsg( item );
-					ReleaseNodes();
 					return;
 				}
 			}
@@ -921,7 +927,6 @@ void Driver::SendQueryStageComplete
 		m_queueEvent[MsgQueue_Query]->Set();
 		m_sendMutex->Unlock();
 
-		ReleaseNodes();
 	}
 }
 
@@ -970,54 +975,51 @@ void Driver::SendMsg
 	if (_msg->GetSendingCommandClass() == Configuration::StaticGetCommandClassId())
 		item.m_delay = 1000;
 	_msg->Finalize();
-
-
-	if( Node* node = GetNode(_msg->GetTargetNodeId()) )
 	{
-		// If the message is for a sleeping node, we queue it in the node itself.
-		if( !node->IsListeningDevice() )
+		LockGuard LG(m_nodeMutex);
+		if( Node* node = GetNode(_msg->GetTargetNodeId()) )
 		{
-			if( WakeUp* wakeUp = static_cast<WakeUp*>( node->GetCommandClass( WakeUp::StaticGetCommandClassId() ) ) )
+			// If the message is for a sleeping node, we queue it in the node itself.
+			if( !node->IsListeningDevice() )
 			{
-				if( !wakeUp->IsAwake() )
+				if( WakeUp* wakeUp = static_cast<WakeUp*>( node->GetCommandClass( WakeUp::StaticGetCommandClassId() ) ) )
 				{
-					Log::Write( LogLevel_Detail, "" );
-					// Handle saving multi-step controller commands
-					if( m_currentControllerCommand != NULL )
+					if( !wakeUp->IsAwake() )
 					{
-						Log::Write( LogLevel_Detail, GetNodeNumber( _msg ), "Queuing (%s) %s", c_sendQueueNames[MsgQueue_Controller], c_controllerCommandNames[m_currentControllerCommand->m_controllerCommand] );
-						delete _msg;
-						item.m_command = MsgQueueCmd_Controller;
-						item.m_cci = new ControllerCommandItem( *m_currentControllerCommand );
-						item.m_msg = NULL;
-						UpdateControllerState( ControllerState_Sleeping );
+						Log::Write( LogLevel_Detail, "" );
+						// Handle saving multi-step controller commands
+						if( m_currentControllerCommand != NULL )
+						{
+							Log::Write( LogLevel_Detail, GetNodeNumber( _msg ), "Queuing (%s) %s", c_sendQueueNames[MsgQueue_Controller], c_controllerCommandNames[m_currentControllerCommand->m_controllerCommand] );
+							delete _msg;
+							item.m_command = MsgQueueCmd_Controller;
+							item.m_cci = new ControllerCommandItem( *m_currentControllerCommand );
+							item.m_msg = NULL;
+							UpdateControllerState( ControllerState_Sleeping );
+						}
+						else
+						{
+							Log::Write( LogLevel_Detail, GetNodeNumber( _msg ), "Queuing (%s) %s", c_sendQueueNames[MsgQueue_WakeUp], _msg->GetAsString().c_str() );
+						}
+						wakeUp->QueueMsg( item );
+						return;
 					}
-					else
-					{
-						Log::Write( LogLevel_Detail, GetNodeNumber( _msg ), "Queuing (%s) %s", c_sendQueueNames[MsgQueue_WakeUp], _msg->GetAsString().c_str() );
-					}
-					wakeUp->QueueMsg( item );
-					ReleaseNodes();
+				}
+			}
+
+			/* if the node Supports the Security Class - check if this message is meant to be encapsulated */
+			if ( Security* security = static_cast<Security *>( node->GetCommandClass(Security::StaticGetCommandClassId() ) ) )
+			{
+				CommandClass *cc = node->GetCommandClass(_msg->GetSendingCommandClass());
+				if ( (cc) && (cc->IsSecured()) )
+				{
+					Log::Write( LogLevel_Detail, GetNodeNumber( _msg ), "Encrypting Message For Command Class %s", cc->GetCommandClassName().c_str());
+					security->SendMsg(_msg);
 					return;
 				}
 			}
 		}
-
-		/* if the node Supports the Security Class - check if this message is meant to be encapsulated */
-		if ( Security* security = static_cast<Security *>( node->GetCommandClass(Security::StaticGetCommandClassId() ) ) )
-		{
-			CommandClass *cc = node->GetCommandClass(_msg->GetSendingCommandClass());
-			if ( (cc) && (cc->IsSecured()) )
-			{
-				Log::Write( LogLevel_Detail, GetNodeNumber( _msg ), "Encrypting Message For Command Class %s", cc->GetCommandClassName().c_str());
-				security->SendMsg(_msg);
-				ReleaseNodes();
-				return;
-			}
-		}
-		ReleaseNodes();
 	}
-
 	Log::Write( LogLevel_Detail, GetNodeNumber( _msg ), "Queuing (%s) %s", c_sendQueueNames[_queue], _msg->GetAsString().c_str() );
 	m_sendMutex->Lock();
 	m_msgQueue[_queue].push_back( item );
@@ -1156,6 +1158,7 @@ bool Driver::WriteMsg
 
 	uint8 attempts = m_currentMsg->GetSendAttempts();
 	uint8 nodeId = m_currentMsg->GetTargetNodeId();
+	LockGuard LG(m_nodeMutex);
 	Node* node = GetNode( nodeId );
 	if( attempts >= m_currentMsg->GetMaxSendAttempts() || (node != NULL && !node->IsNodeAlive() && !m_currentMsg->IsNoOperation() ) )
 	{
@@ -1170,10 +1173,6 @@ bool Driver::WriteMsg
 		}
 		RemoveCurrentMsg();
 		m_dropped++;
-		if( node != NULL )
-		{
-		    	ReleaseNodes();
-		}
 		return false;
 	}
 
@@ -1227,10 +1226,6 @@ bool Driver::WriteMsg
 				}
 			}
 		}
-	}
-	if( node != NULL )
-	{
-		ReleaseNodes();
 	}
 
 	return true;
@@ -1479,7 +1474,7 @@ void Driver::CheckCompletedNodeQueries
 		bool sleepingOnly = true;
 		bool deadFound = false;
 
-		LockNodes();
+		LockGuard LG(m_nodeMutex);
 		for( int i=0; i<256; ++i )
 		{
 			if( m_nodes[i] )
@@ -1499,7 +1494,7 @@ void Driver::CheckCompletedNodeQueries
 				}
 			}
 		}
-		ReleaseNodes();
+		LG.Unlock();
 
 		Log::Write( LogLevel_Warning, "CheckCompletedNodeQueries all=%d, deadFound=%d sleepingOnly=%d", all, deadFound, sleepingOnly );
 		if( all )
@@ -2493,6 +2488,7 @@ void Driver::HandleSerialAPIGetInitDataResponse
 					}
 					else
 					{
+						LockGuard LG(m_nodeMutex);
 						Node* node = GetNode( nodeId );
 						if( node )
 						{
@@ -2504,7 +2500,6 @@ void Driver::HandleSerialAPIGetInitDataResponse
 								node->SetQueryStage( Node::QueryStage_Probe1 );
 							}
 
-							ReleaseNodes();
 						}
 						else
 						{
@@ -2521,6 +2516,7 @@ void Driver::HandleSerialAPIGetInitDataResponse
 				}
 				else
 				{
+					LockGuard LG(m_nodeMutex);
 					if( GetNode(nodeId) )
 					{
 						// This node no longer exists in the Z-Wave network
@@ -2531,7 +2527,6 @@ void Driver::HandleSerialAPIGetInitDataResponse
 						notification->SetHomeAndNodeIds( m_homeId, nodeId );
 						QueueNotification( notification );
 
-						ReleaseNodes();
 					}
 				}
 			}
@@ -2774,11 +2769,11 @@ void Driver::HandleGetRoutingInfoResponse
 {
 	Log::Write( LogLevel_Info, GetNodeNumber( m_currentMsg ), "Received reply to FUNC_ID_ZW_GET_ROUTING_INFO" );
 
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( GetNodeNumber( m_currentMsg ) ) )
 	{
 		// copy the 29-byte bitmap received (29*8=232 possible nodes) into this node's neighbors member variable
 		memcpy( node->m_neighbors, &_data[2], 29 );
-		ReleaseNodes();
 		Log::Write( LogLevel_Info, GetNodeNumber( m_currentMsg ), "    Neighbors of this node are:" );
 		bool bNeighbors = false;
 		for( int by=0; by<29; by++ )
@@ -3010,7 +3005,7 @@ void Driver::HandleRemoveNodeFromNetworkRequest
 			{
 				if( _data[5] >= 3 )
 				{
-					LockNodes();
+					LockGuard LG(m_nodeMutex);
 					for( int i=0; i<256; i++ )
 					{
 						if( m_nodes[i] == NULL )
@@ -3037,7 +3032,7 @@ void Driver::HandleRemoveNodeFromNetworkRequest
 							}
 						}
 					}
-					ReleaseNodes();
+					LG.Unlock();
 				}
 				else
 				{
@@ -3071,10 +3066,10 @@ void Driver::HandleRemoveNodeFromNetworkRequest
 
 				if ( m_currentControllerCommand->m_controllerCommandNode != 0 && m_currentControllerCommand->m_controllerCommandNode != 0xff )
 				{
-					LockNodes();
+					LockGuard LG(m_nodeMutex);
 					delete m_nodes[m_currentControllerCommand->m_controllerCommandNode];
 					m_nodes[m_currentControllerCommand->m_controllerCommandNode] = NULL;
-					ReleaseNodes();
+					LG.Unlock();
 
 					Notification* notification = new Notification( Notification::Type_NodeRemoved );
 					notification->SetHomeAndNodeIds( m_homeId, m_currentControllerCommand->m_controllerCommandNode );
@@ -3220,10 +3215,10 @@ void Driver::HandleRemoveFailedNodeRequest
 			Log::Write( LogLevel_Info, nodeId, "Received reply to FUNC_ID_ZW_REMOVE_FAILED_NODE_ID - node %d successfully moved to failed nodes list", m_currentControllerCommand->m_controllerCommandNode );
 			state = ControllerState_Completed;
 
-			LockNodes();
+			LockGuard LG(m_nodeMutex);
 			delete m_nodes[m_currentControllerCommand->m_controllerCommandNode];
 			m_nodes[m_currentControllerCommand->m_controllerCommandNode] = NULL;
-			ReleaseNodes();
+			LG.Unlock();
 
 			Notification* notification = new Notification( Notification::Type_NodeRemoved );
 			notification->SetHomeAndNodeIds( m_homeId, m_currentControllerCommand->m_controllerCommandNode );
@@ -3563,10 +3558,10 @@ bool Driver::HandleApplicationUpdateRequest
 		{
 			Log::Write( LogLevel_Info, nodeId, "** Network change **: Z-Wave node %d was removed", nodeId );
 
-			LockNodes();
+			LockGuard LG(m_nodeMutex);
 			delete m_nodes[nodeId];
 			m_nodes[nodeId] = NULL;
-			ReleaseNodes();
+			LG.Unlock();
 
 			Notification* notification = new Notification( Notification::Type_NodeRemoved );
 			notification->SetHomeAndNodeIds( m_homeId, nodeId );
@@ -3784,6 +3779,7 @@ bool Driver::EnablePoll
 
 	// confirm that this node exists
 	uint8 nodeId = _valueId.GetNodeId();
+	LockGuard LG(m_nodeMutex);
 	Node* node = GetNode( nodeId );
 	if( node != NULL )
 	{
@@ -3803,7 +3799,6 @@ bool Driver::EnablePoll
 					Log::Write( LogLevel_Detail, "EnablePoll not required to do anything (value is already in the poll list)" );
 					value->Release();
 					m_pollMutex->Unlock();
-					ReleaseNodes();
 					return true;
 				}
 			}
@@ -3815,7 +3810,6 @@ bool Driver::EnablePoll
 			m_pollList.push_back( pe );
 			value->Release();
 			m_pollMutex->Unlock();
-			ReleaseNodes();
 
 			// send notification to indicate polling is enabled
 			Notification* notification = new Notification( Notification::Type_PollingEnabled );
@@ -3828,7 +3822,6 @@ bool Driver::EnablePoll
 
 		// allow the poll thread to continue
 		m_pollMutex->Unlock();
-		ReleaseNodes();
 
 		Log::Write( LogLevel_Info, nodeId, "EnablePoll failed - value not found for node %d", nodeId );
 		return false;
@@ -3855,6 +3848,7 @@ bool Driver::DisablePoll
 
 	// confirm that this node exists
 	uint8 nodeId = _valueId.GetNodeId();
+	LockGuard LG(m_nodeMutex);
 	Node* node = GetNode( nodeId );
 	if( node != NULL)
 	{
@@ -3874,7 +3868,6 @@ bool Driver::DisablePoll
 				value->SetPollIntensity( 0 );
 				value->Release();
 				m_pollMutex->Unlock();
-				ReleaseNodes();
 
 				// send notification to indicate polling is disabled
 				Notification* notification = new Notification( Notification::Type_PollingDisabled );
@@ -3888,7 +3881,6 @@ bool Driver::DisablePoll
 
 		// Not in the list
 		m_pollMutex->Unlock();
-		ReleaseNodes();
 		Log::Write( LogLevel_Info, nodeId, "DisablePoll failed - value not on list");
 		return false;
 	}
@@ -3933,6 +3925,7 @@ bool Driver::isPolled
 	 */
 	// confirm that this node exists
 	uint8 nodeId = _valueId.GetNodeId();
+	LockGuard LG(m_nodeMutex);
 	Node* node = GetNode( nodeId );
 	if( node != NULL)
 	{
@@ -3946,7 +3939,6 @@ bool Driver::isPolled
 				if( bPolled )
 				{
 					m_pollMutex->Unlock();
-					ReleaseNodes();
 					return true;
 				}
 				else
@@ -3961,7 +3953,6 @@ bool Driver::isPolled
 		if( !bPolled )
 		{
 			m_pollMutex->Unlock();
-			ReleaseNodes();
 			return false;
 		}
 		else
@@ -4059,15 +4050,16 @@ void Driver::PollThreadProc
 
 			// reset the poll counter to the full pollIntensity value and push it at the end of the list
 			// release the value object referenced; call GetNode to ensure the node objects are locked during this period
-			(void)GetNode( valueId.GetNodeId() );
-			Value* value = GetValue( valueId );
-			if (!value)
-			        continue;
-			pe.m_pollCounter = value->GetPollIntensity();
-			m_pollList.push_back( pe );
-			value->Release();
-			ReleaseNodes();
-
+			{
+				LockGuard LG(m_nodeMutex);
+				(void)GetNode( valueId.GetNodeId() );
+				Value* value = GetValue( valueId );
+				if (!value)
+					continue;
+				pe.m_pollCounter = value->GetPollIntensity();
+				m_pollList.push_back( pe );
+				value->Release();
+			}
 			// If the polling interval is for the whole poll list, calculate the time before the next poll,
 			// so that all polls can take place within the user-specified interval.
 			if( !m_bIntervalBetweenPolls )
@@ -4080,37 +4072,38 @@ void Driver::PollThreadProc
 				pollInterval /= (int32) m_pollList.size();
 			}
 
-			// Request the state of the value from the node to which it belongs
-			if( Node* node = GetNode( valueId.GetNodeId() ) )
 			{
-				bool requestState = true;
-				if( !node->IsListeningDevice() )
+				LockGuard LG(m_nodeMutex);
+				// Request the state of the value from the node to which it belongs
+				if( Node* node = GetNode( valueId.GetNodeId() ) )
 				{
-					// The device is not awake all the time.  If it is not awake, we mark it
-					// as requiring a poll.  The poll will be done next time the node wakes up.
-					if( WakeUp* wakeUp = static_cast<WakeUp*>( node->GetCommandClass( WakeUp::StaticGetCommandClassId() ) ) )
+					bool requestState = true;
+					if( !node->IsListeningDevice() )
 					{
-						if( !wakeUp->IsAwake() )
+						// The device is not awake all the time.  If it is not awake, we mark it
+						// as requiring a poll.  The poll will be done next time the node wakes up.
+						if( WakeUp* wakeUp = static_cast<WakeUp*>( node->GetCommandClass( WakeUp::StaticGetCommandClassId() ) ) )
 						{
-							wakeUp->SetPollRequired();
-							requestState = false;
+							if( !wakeUp->IsAwake() )
+							{
+								wakeUp->SetPollRequired();
+								requestState = false;
+							}
 						}
 					}
-				}
 
-				if( requestState )
-				{
-					// Request an update of the value
-					CommandClass* cc = node->GetCommandClass( valueId.GetCommandClassId() );
-					if (cc) {
-        					uint8 index = valueId.GetIndex();
-	        				uint8 instance = valueId.GetInstance();
-		        			Log::Write( LogLevel_Detail, node->m_nodeId, "Polling: %s index = %d instance = %d (poll queue has %d messages)", cc->GetCommandClassName().c_str(), index, instance, m_msgQueue[MsgQueue_Poll].size() );
-			        		cc->RequestValue( 0, index, instance, MsgQueue_Poll );
-                                        }
+					if( requestState )
+					{
+						// Request an update of the value
+						CommandClass* cc = node->GetCommandClass( valueId.GetCommandClassId() );
+						if (cc) {
+								uint8 index = valueId.GetIndex();
+								uint8 instance = valueId.GetInstance();
+								Log::Write( LogLevel_Detail, node->m_nodeId, "Polling: %s index = %d instance = %d (poll queue has %d messages)", cc->GetCommandClassName().c_str(), index, instance, m_msgQueue[MsgQueue_Poll].size() );
+								cc->RequestValue( 0, index, instance, MsgQueue_Poll );
+											}
+					}
 				}
-
-				ReleaseNodes();
 			}
 
 			m_pollMutex->Unlock();
@@ -4178,7 +4171,7 @@ void Driver::InitAllNodes
 )
 {
 	// Delete all the node data
-	LockNodes();
+	LockGuard LG(m_nodeMutex);
 	for( int i=0; i<256; ++i )
 	{
 		if( m_nodes[i] )
@@ -4187,7 +4180,7 @@ void Driver::InitAllNodes
 			m_nodes[i] = NULL;
 		}
 	}
-	ReleaseNodes();
+	LG.Unlock();
 
 	// Fetch new node data from the Z-Wave network
 	m_controller->PlayInitSequence( this );
@@ -4204,20 +4197,21 @@ void Driver::InitNode
 )
 {
 	// Delete any existing node and replace it with a new one
-	LockNodes();
-	if( m_nodes[_nodeId] )
 	{
-		// Remove the original node
-		delete m_nodes[_nodeId];
-		Notification* notification = new Notification( Notification::Type_NodeRemoved );
-		notification->SetHomeAndNodeIds( m_homeId, _nodeId );
-		QueueNotification( notification );
-	}
+		LockGuard LG(m_nodeMutex);
+		if( m_nodes[_nodeId] )
+		{
+			// Remove the original node
+			delete m_nodes[_nodeId];
+			Notification* notification = new Notification( Notification::Type_NodeRemoved );
+			notification->SetHomeAndNodeIds( m_homeId, _nodeId );
+			QueueNotification( notification );
+		}
 
-	// Add the new node
-	m_nodes[_nodeId] = new Node( m_homeId, _nodeId );
-	if (newNode == true) static_cast<Node *>(m_nodes[_nodeId])->SetAddingNode();
-	ReleaseNodes();
+		// Add the new node
+		m_nodes[_nodeId] = new Node( m_homeId, _nodeId );
+		if (newNode == true) static_cast<Node *>(m_nodes[_nodeId])->SetAddingNode();
+	}
 
 	Notification* notification = new Notification( Notification::Type_NodeAdded );
 	notification->SetHomeAndNodeIds( m_homeId, _nodeId );
@@ -4238,10 +4232,10 @@ bool Driver::IsNodeListeningDevice
 )
 {
 	bool res = false;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		res = node->IsListeningDevice();
-		ReleaseNodes();
 	}
 
 	return res;
@@ -4257,10 +4251,10 @@ bool Driver::IsNodeFrequentListeningDevice
 )
 {
 	bool res = false;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		res = node->IsFrequentListeningDevice();
-		ReleaseNodes();
 	}
 
 	return res;
@@ -4276,10 +4270,10 @@ bool Driver::IsNodeBeamingDevice
 )
 {
 	bool res = false;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		res = node->IsBeamingDevice();
-		ReleaseNodes();
 	}
 
 	return res;
@@ -4295,10 +4289,10 @@ bool Driver::IsNodeRoutingDevice
 )
 {
 	bool res = false;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		res = node->IsRoutingDevice();
-		ReleaseNodes();
 	}
 
 	return res;
@@ -4314,10 +4308,10 @@ bool Driver::IsNodeSecurityDevice
 )
 {
 	bool security = false;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		security = node->IsSecurityDevice();
-		ReleaseNodes();
 	}
 
 	return security;
@@ -4333,10 +4327,10 @@ uint32 Driver::GetNodeMaxBaudRate
 )
 {
 	uint32 baud = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		baud = node->GetMaxBaudRate();
-		ReleaseNodes();
 	}
 
 	return baud;
@@ -4352,10 +4346,10 @@ uint8 Driver::GetNodeVersion
 )
 {
 	uint8 version = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		version = node->GetVersion();
-		ReleaseNodes();
 	}
 
 	return version;
@@ -4371,10 +4365,10 @@ uint8 Driver::GetNodeSecurity
 )
 {
 	uint8 security = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		security = node->GetSecurity();
-		ReleaseNodes();
 	}
 
 	return security;
@@ -4390,10 +4384,10 @@ uint8 Driver::GetNodeBasic
 )
 {
 	uint8 basic = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		basic = node->GetBasic();
-		ReleaseNodes();
 	}
 
 	return basic;
@@ -4409,10 +4403,10 @@ uint8 Driver::GetNodeGeneric
 )
 {
 	uint8 genericType = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		genericType = node->GetGeneric();
-		ReleaseNodes();
 	}
 
 	return genericType;
@@ -4428,10 +4422,10 @@ uint8 Driver::GetNodeSpecific
 )
 {
 	uint8 specific = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		specific = node->GetSpecific();
-		ReleaseNodes();
 	}
 
 	return specific;
@@ -4447,11 +4441,10 @@ string Driver::GetNodeType
 	uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
-		string str = node->GetType();
-		ReleaseNodes();
-		return str;
+		return node->GetType();
 	}
 
 	return "Unknown";
@@ -4468,10 +4461,10 @@ uint32 Driver::GetNodeNeighbors
 )
 {
 	uint32 numNeighbors = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		numNeighbors = node->GetNeighbors( o_neighbors );
-		ReleaseNodes();
 	}
 
 	return numNeighbors;
@@ -4487,11 +4480,10 @@ string Driver::GetNodeManufacturerName
 	uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
-		string str = node->GetManufacturerName();
-		ReleaseNodes();
-		return str;
+		return node->GetManufacturerName();
 	}
 
 	return "";
@@ -4507,11 +4499,10 @@ string Driver::GetNodeProductName
 	uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
-		string str = node->GetProductName();
-		ReleaseNodes();
-		return str;
+		return node->GetProductName();
 	}
 
 	return "";
@@ -4527,11 +4518,10 @@ string Driver::GetNodeName
 	uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
-		string str = node->GetNodeName();
-		ReleaseNodes();
-		return str;
+		return node->GetNodeName();
 	}
 
 	return "";
@@ -4547,11 +4537,10 @@ string Driver::GetNodeLocation
 	uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
-		string str = node->GetLocation();
-		ReleaseNodes();
-		return str;
+		return node->GetLocation();
 	}
 
 	return "";
@@ -4567,11 +4556,10 @@ string Driver::GetNodeManufacturerId
 	uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
-		string str = node->GetManufacturerId();
-		ReleaseNodes();
-		return str;
+		return node->GetManufacturerId();
 	}
 
 	return "";
@@ -4587,11 +4575,10 @@ string Driver::GetNodeProductType
 	uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
-		string str = node->GetProductType();
-		ReleaseNodes();
-		return str;
+		return node->GetProductType();
 	}
 
 	return "";
@@ -4607,11 +4594,10 @@ string Driver::GetNodeProductId
 	uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
-		string str = node->GetProductId();
-		ReleaseNodes();
-		return str;
+		return node->GetProductId();
 	}
 
 	return "";
@@ -4627,10 +4613,10 @@ void Driver::SetNodeManufacturerName
 	string const& _manufacturerName
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		node->SetManufacturerName( _manufacturerName );
-		ReleaseNodes();
 	}
 }
 
@@ -4644,10 +4630,10 @@ void Driver::SetNodeProductName
 	string const& _productName
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		node->SetProductName( _productName );
-		ReleaseNodes();
 	}
 }
 
@@ -4661,10 +4647,10 @@ void Driver::SetNodeName
 	string const& _nodeName
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		node->SetNodeName( _nodeName );
-		ReleaseNodes();
 	}
 }
 
@@ -4678,10 +4664,10 @@ void Driver::SetNodeLocation
 	string const& _location
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		node->SetLocation( _location );
-		ReleaseNodes();
 	}
 }
 
@@ -4695,10 +4681,10 @@ void Driver::SetNodeLevel
 	uint8 const _level
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		node->SetLevel( _level );
-		ReleaseNodes();
 	}
 }
 
@@ -4711,10 +4697,10 @@ void Driver::SetNodeOn
     uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
     if( Node* node = GetNode( _nodeId ) )
     {
         node->SetNodeOn();
-        ReleaseNodes();
     }
 }
 
@@ -4727,10 +4713,10 @@ void Driver::SetNodeOff
     uint8 const _nodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
     if( Node* node = GetNode( _nodeId ) )
     {
         node->SetNodeOff();
-        ReleaseNodes();
     }
 }
 
@@ -4743,6 +4729,7 @@ Value* Driver::GetValue
 	ValueID const& _id
 )
 {
+
 	// This method is only called by code that has already locked the node
 	if( Node* node = m_nodes[_id.GetNodeId()] )
 	{
@@ -5295,7 +5282,7 @@ void Driver::TestNetwork
 	uint32 const _count
 )
 {
-	LockNodes();
+	LockGuard LG(m_nodeMutex);
 	if( _nodeId == 0 )	// send _count messages to every node
 	{
 		for( int i=0; i<256; ++i )
@@ -5322,7 +5309,6 @@ void Driver::TestNetwork
 			noop->Set( true );
 		}
 	}
-	ReleaseNodes();
 }
 
 //-----------------------------------------------------------------------------
@@ -5339,7 +5325,7 @@ void Driver::SwitchAllOn
 {
 	SwitchAll::On( this, 0xff );
 
-	LockNodes();
+	LockGuard LG(m_nodeMutex);
 	for( int i=0; i<256; ++i )
 	{
 		if( GetNodeUnsafe( i ) )
@@ -5350,7 +5336,6 @@ void Driver::SwitchAllOn
 			}
 		}
 	}
-	ReleaseNodes();
 }
 
 //-----------------------------------------------------------------------------
@@ -5363,7 +5348,7 @@ void Driver::SwitchAllOff
 {
 	SwitchAll::Off( this, 0xff );
 
-	LockNodes();
+	LockGuard LG(m_nodeMutex);
 	for( int i=0; i<256; ++i )
 	{
 		if( GetNodeUnsafe( i ) )
@@ -5374,7 +5359,6 @@ void Driver::SwitchAllOff
 			}
 		}
 	}
-	ReleaseNodes();
 }
 
 //-----------------------------------------------------------------------------
@@ -5389,14 +5373,13 @@ bool Driver::SetConfigParam
 	uint8 _size
 )
 {
-	bool res = false;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
-		res = node->SetConfigParam( _param, _value, _size );
-		ReleaseNodes();
+		return node->SetConfigParam( _param, _value, _size );
 	}
 
-	return res;
+	return false;
 }
 
 //-----------------------------------------------------------------------------
@@ -5409,10 +5392,10 @@ void Driver::RequestConfigParam
 	uint8 const _param
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		node->RequestConfigParam( _param );
-		ReleaseNodes();
 	}
 }
 
@@ -5426,10 +5409,10 @@ uint8 Driver::GetNumGroups
 )
 {
 	uint8 numGroups = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		numGroups = node->GetNumGroups();
-		ReleaseNodes();
 	}
 
 	return numGroups;
@@ -5447,10 +5430,10 @@ uint32 Driver::GetAssociations
 )
 {
 	uint32 numAssociations = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		numAssociations = node->GetAssociations( _groupIdx, o_associations );
-		ReleaseNodes();
 	}
 
 	return numAssociations;
@@ -5467,10 +5450,10 @@ uint8 Driver::GetMaxAssociations
 )
 {
 	uint8 maxAssociations = 0;
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		maxAssociations = node->GetMaxAssociations( _groupIdx );
-		ReleaseNodes();
 	}
 
 	return maxAssociations;
@@ -5487,10 +5470,10 @@ string Driver::GetGroupLabel
 )
 {
 	string label = "";
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		label = node->GetGroupLabel( _groupIdx );
-		ReleaseNodes();
 	}
 
 	return label;
@@ -5507,10 +5490,10 @@ void Driver::AddAssociation
 	uint8 const _targetNodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		node->AddAssociation( _groupIdx, _targetNodeId );
-		ReleaseNodes();
 	}
 }
 
@@ -5525,10 +5508,10 @@ void Driver::RemoveAssociation
 	uint8 const _targetNodeId
 )
 {
+	LockGuard LG(m_nodeMutex);
 	if( Node* node = GetNode( _nodeId ) )
 	{
 		node->RemoveAssociation( _groupIdx, _targetNodeId );
-		ReleaseNodes();
 	}
 }
 
@@ -5777,8 +5760,7 @@ void Driver::SaveButtons
 
 	snprintf( str, sizeof(str), "%d", 1 );
 	nodesElement->SetAttribute( "version", str);
-
-	LockNodes();
+	LockGuard LG(m_nodeMutex);
 	for( int i = 1; i < 256; i++ )
 	{
 		if( m_nodes[i] == NULL || m_nodes[i]->m_buttonMap.empty() )
@@ -5807,7 +5789,6 @@ void Driver::SaveButtons
 
 		nodesElement->LinkEndChild( nodeElement );
 	}
-	ReleaseNodes();
 
 	string userPath;
 	Options::Get()->GetOptionAsString( "UserPath", &userPath );
@@ -6252,11 +6233,11 @@ void Driver::GetNodeStatistics
 	Node::NodeData* _data
 )
 {
+	LockGuard LG(m_nodeMutex);
 	Node* node = GetNode( _nodeId );
 	if( node != NULL )
 	{
 		node->GetNodeStatistics( _data );
-		ReleaseNodes();
 	}
 }
 

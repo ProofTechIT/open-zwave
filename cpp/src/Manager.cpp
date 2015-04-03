@@ -36,6 +36,7 @@
 #include "Notification.h"
 #include "Options.h"
 #include "Scene.h"
+#include "Utils.h"
 
 #include "platform/Mutex.h"
 #include "platform/Event.h"
@@ -716,13 +717,12 @@ uint8 Manager::GetPollIntensity
 	uint8 intensity = 0;
 	if( Driver* driver = GetDriver( _valueId.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _valueId ) )
 		{
 			intensity = value->GetPollIntensity();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
  	return intensity;
@@ -746,11 +746,11 @@ bool Manager::RefreshNodeInfo
 	{
 		// Cause the node's data to be obtained from the Z-Wave network
 		// in the same way as if it had just been added.
+		LockGuard LG(driver->m_nodeMutex);
 		Node* node = driver->GetNode( _nodeId );
 		if( node )
 		{
 			node->SetQueryStage( Node::QueryStage_ProtocolInfo );
-			driver->ReleaseNodes();
 			return true;
 		}
 	}
@@ -770,12 +770,12 @@ bool Manager::RequestNodeState
 {
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
+		LockGuard LG(driver->m_nodeMutex);
 		// Retreive the Node's session and dynamic data
 		Node* node = driver->GetNode( _nodeId );
 		if( node )
 		{
 			node->SetQueryStage( Node::QueryStage_Associations );
-			driver->ReleaseNodes();
 			return true;
 		}
 	}
@@ -794,12 +794,12 @@ bool Manager::RequestNodeDynamic
 {
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
+		LockGuard LG(driver->m_nodeMutex);
 		// Retreive the Node's dynamic data
 		Node* node = driver->GetNode( _nodeId );
 		if( node )
 		{
 			node->SetQueryStage( Node::QueryStage_Dynamic );
-			driver->ReleaseNodes();
 			return true;
 		}
 	}
@@ -1002,8 +1002,8 @@ uint8 Manager::GetNodeGeneric
 //-----------------------------------------------------------------------------
 uint8 Manager::GetNodeSpecific
 (
-	uint32 const _homeId,
-	uint8 const _nodeId
+		uint32 const _homeId,
+		uint8 const _nodeId
 )
 {
 	uint8 specific = 0;
@@ -1296,14 +1296,12 @@ bool Manager::IsNodeInfoReceived
 		Node *node;
 
 		// Need to lock and unlock nodes to check this information
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 
-		if( (node = driver->GetNodeUnsafe( _nodeId ) ) != NULL)
+		if( (node = driver->GetNode( _nodeId ) ) != NULL)
 		{
 			result = node->NodeInfoReceived();
 		}
-
-		driver->ReleaseNodes();
 	}
 
 	return result;
@@ -1326,13 +1324,13 @@ bool Manager::GetNodeClassInformation
 
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
-	        Node *node;
+		Node *node;
 
-	        // Need to lock and unlock nodes to check this information
-	        driver->LockNodes();
+		// Need to lock and unlock nodes to check this information
+		LockGuard LG(driver->m_nodeMutex);
 
-	        if( ( node = driver->GetNodeUnsafe( _nodeId ) ) != NULL )
-	        {
+		if( ( node = driver->GetNode( _nodeId ) ) != NULL )
+		{
 			CommandClass *cc;
 			if( node->NodeInfoReceived() && ( ( cc = node->GetCommandClass( _commandClassId ) ) != NULL ) )
 			{
@@ -1349,7 +1347,6 @@ bool Manager::GetNodeClassInformation
 			}
 		}
 
-		driver->ReleaseNodes();
 	}
 
 	return result;
@@ -1372,17 +1369,16 @@ bool Manager::IsNodeAwake
 	bool result = true;
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
-	        // Need to lock and unlock nodes to check this information
-	        driver->LockNodes();
+		// Need to lock and unlock nodes to check this information
+		LockGuard LG(driver->m_nodeMutex);
 
-	        if( Node* node = driver->GetNodeUnsafe( _nodeId ) )
-	        {
+		if( Node* node = driver->GetNode( _nodeId ) )
+		{
 			if( WakeUp* wcc = static_cast<WakeUp*>( node->GetCommandClass( WakeUp::StaticGetCommandClassId() ) ) )
 			{
 				result = wcc->IsAwake();
 			}
 		}
-		driver->ReleaseNodes();
 	}
 	return result;
 }
@@ -1400,10 +1396,10 @@ bool Manager::IsNodeFailed
 	bool result = false;
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
-	        if( Node* node = driver->GetNode( _nodeId ) )
-	        {
+		LockGuard LG(driver->m_nodeMutex);
+		if( Node* node = driver->GetNode( _nodeId ) )
+		{
 			result = !node->IsNodeAlive();
-        		driver->ReleaseNodes();
 		}
 	}
 	return result;
@@ -1422,10 +1418,10 @@ string Manager::GetNodeQueryStage
 	string result = "Unknown";
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
-	        if( Node* node = driver->GetNode( _nodeId ) )
-	        {
+		LockGuard LG(driver->m_nodeMutex);
+		if( Node* node = driver->GetNode( _nodeId ) )
+		{
 			result = node->GetQueryStageName( node->GetCurrentQueryStage() );
-        		driver->ReleaseNodes();
 		}
 	}
 	return result;
@@ -1464,13 +1460,12 @@ string Manager::GetValueLabel
 	string label;
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			label = value->GetLabel();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
 	return label;
@@ -1488,13 +1483,12 @@ void Manager::SetValueLabel
 {
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			value->SetLabel( _value );
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 }
 
@@ -1510,13 +1504,12 @@ string Manager::GetValueUnits
 	string units;
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			units = value->GetUnits();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
 	return units;
@@ -1534,13 +1527,12 @@ void Manager::SetValueUnits
 {
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			value->SetUnits( _value );
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 }
 
@@ -1556,13 +1548,12 @@ string Manager::GetValueHelp
 	string help;
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			help = value->GetHelp();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
 	return help;
@@ -1580,13 +1571,12 @@ void Manager::SetValueHelp
 {
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			value->SetHelp( _value );
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 }
 
@@ -1602,13 +1592,12 @@ int32 Manager::GetValueMin
 	int32 limit = 0;
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			limit = value->GetMin();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
 	return limit;
@@ -1626,13 +1615,12 @@ int32 Manager::GetValueMax
 	int32 limit = 0;
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			limit = value->GetMax();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
 	return limit;
@@ -1650,13 +1638,12 @@ bool Manager::IsValueReadOnly
 	bool res = false;
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			res = value->IsReadOnly();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
 	return res;
@@ -1674,13 +1661,12 @@ bool Manager::IsValueWriteOnly
 	bool res = false;
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			res = value->IsWriteOnly();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
 	return res;
@@ -1698,13 +1684,12 @@ bool Manager::IsValueSet
 	bool res = false;
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			res = value->IsSet();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
 	return res;
@@ -1722,13 +1707,12 @@ bool Manager::IsValuePolled
 	bool res = false;
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			res = value->IsPolled();
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 
 	return res;
@@ -1752,28 +1736,26 @@ bool Manager::GetValueAsBool
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueBool* value = static_cast<ValueBool*>( driver->GetValue( _id ) ) )
 				{
 					*o_value = value->GetValue();
 					value->Release();
 					res = true;
 				}
-				driver->ReleaseNodes();
 			}
 		}
 		else if( ValueID::ValueType_Button == _id.GetType() )
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-			    	driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueButton* value = static_cast<ValueButton*>( driver->GetValue( _id ) ) )
 				{
 					*o_value = value->IsPressed();
 					value->Release();
 					res = true;
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -1799,14 +1781,13 @@ bool Manager::GetValueAsByte
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueByte* value = static_cast<ValueByte*>( driver->GetValue( _id ) ) )
 				{
 					*o_value = value->GetValue();
 					value->Release();
 					res = true;
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -1832,7 +1813,7 @@ bool Manager::GetValueAsFloat
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueDecimal* value = static_cast<ValueDecimal*>( driver->GetValue( _id ) ) )
 				{
 					string str = value->GetValue();
@@ -1840,7 +1821,6 @@ bool Manager::GetValueAsFloat
 					value->Release();
 					res = true;
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -1866,14 +1846,13 @@ bool Manager::GetValueAsInt
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueInt* value = static_cast<ValueInt*>( driver->GetValue( _id ) ) )
 				{
 					*o_value = value->GetValue();
 					value->Release();
 					res = true;
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -1900,7 +1879,7 @@ bool Manager::GetValueAsRaw
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueRaw* value = static_cast<ValueRaw*>( driver->GetValue( _id ) ) )
 				{
 					*o_length = value->GetLength();
@@ -1909,7 +1888,6 @@ bool Manager::GetValueAsRaw
 					value->Release();
 					res = true;
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -1935,14 +1913,13 @@ bool Manager::GetValueAsShort
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueShort* value = static_cast<ValueShort*>( driver->GetValue( _id ) ) )
 				{
 					*o_value = value->GetValue();
 					value->Release();
 					res = true;
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -1967,7 +1944,7 @@ bool Manager::GetValueAsString
 	{
 		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 		{
-			driver->LockNodes();
+			LockGuard LG(driver->m_nodeMutex);
 
 			switch( _id.GetType() )
 			{
@@ -2072,7 +2049,6 @@ bool Manager::GetValueAsString
 				}
 			}
 
-			driver->ReleaseNodes();
 		}
 	}
 
@@ -2097,7 +2073,7 @@ bool Manager::GetValueListSelection
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueList* value = static_cast<ValueList*>( driver->GetValue( _id ) ) )
 				{
 					ValueList::Item const& item = value->GetItem();
@@ -2108,7 +2084,6 @@ bool Manager::GetValueListSelection
 					}
 					value->Release();
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2134,7 +2109,7 @@ bool Manager::GetValueListSelection
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueList* value = static_cast<ValueList*>( driver->GetValue( _id ) ) )
 				{
 					ValueList::Item const& item = value->GetItem();
@@ -2142,7 +2117,6 @@ bool Manager::GetValueListSelection
 					value->Release();
 					res = true;
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2168,13 +2142,12 @@ bool Manager::GetValueListItems
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueList* value = static_cast<ValueList*>( driver->GetValue( _id ) ) )
 				{
 					res = value->GetItemLabels( o_value );
 					value->Release();
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2200,14 +2173,13 @@ bool Manager::GetValueFloatPrecision
 		{
 			if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueDecimal* value = static_cast<ValueDecimal*>( driver->GetValue( _id ) ) )
 				{
 					*o_value = value->GetPrecision();
 					value->Release();
 					res = true;
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2233,13 +2205,12 @@ bool Manager::SetValue
 		{
 			if( _id.GetNodeId() != driver->GetNodeId() )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueBool* value = static_cast<ValueBool*>( driver->GetValue( _id ) ) )
 				{
 					res = value->Set( _value );
 					value->Release();
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2265,13 +2236,12 @@ bool Manager::SetValue
 		{
 			if( _id.GetNodeId() != driver->GetNodeId() )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueByte* value = static_cast<ValueByte*>( driver->GetValue( _id ) ) )
 				{
 					res = value->Set( _value );
 					value->Release();
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2297,7 +2267,7 @@ bool Manager::SetValue
 		{
 			if( _id.GetNodeId() != driver->GetNodeId() )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueDecimal* value = static_cast<ValueDecimal*>( driver->GetValue( _id ) ) )
 				{
 					char str[256];
@@ -2323,7 +2293,6 @@ bool Manager::SetValue
 					res = value->Set( str );
 					value->Release();
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2349,13 +2318,12 @@ bool Manager::SetValue
 		{
 			if( _id.GetNodeId() != driver->GetNodeId() )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueInt* value = static_cast<ValueInt*>( driver->GetValue( _id ) ) )
 				{
 					res = value->Set( _value );
 					value->Release();
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2382,13 +2350,12 @@ bool Manager::SetValue
 		{
 			if( _id.GetNodeId() != driver->GetNodeId() )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueRaw* value = static_cast<ValueRaw*>( driver->GetValue( _id ) ) )
 				{
 					res = value->Set( _value, _length );
 					value->Release();
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2414,13 +2381,12 @@ bool Manager::SetValue
 		{
 			if( _id.GetNodeId() != driver->GetNodeId() )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueShort* value = static_cast<ValueShort*>( driver->GetValue( _id ) ) )
 				{
 					res = value->Set( _value );
 					value->Release();
 				}
-				driver->ReleaseNodes();
 			}
 		}
 	}
@@ -2446,13 +2412,12 @@ bool Manager::SetValueListSelection
 		{
 			if( _id.GetNodeId() != driver->GetNodeId() )
 			{
-				driver->LockNodes();
+				LockGuard LG(driver->m_nodeMutex);
 				if( ValueList* value = static_cast<ValueList*>( driver->GetValue( _id ) ) )
 				{
 					res = value->SetByLabel( _selectedItem );
 					value->Release();
 				}
-				driver->ReleaseNodes();
 			}
 
 		}
@@ -2477,7 +2442,7 @@ bool Manager::SetValue
 	{
 		if( _id.GetNodeId() != driver->GetNodeId() )
 		{
-			driver->LockNodes();
+			LockGuard LG(driver->m_nodeMutex);
 
 			switch( _id.GetType() )
 			{
@@ -2575,7 +2540,6 @@ bool Manager::SetValue
 					break;
 				}
 			}
-			driver->ReleaseNodes();
 		}
 	}
 	return res;
@@ -2597,9 +2561,9 @@ bool Manager::RefreshValue
 	    Node *node;
 
 	    // Need to lock and unlock nodes to check this information
-	    driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 
-	    if( (node = driver->GetNodeUnsafe( _id.GetNodeId() ) ) != NULL)
+	    if( (node = driver->GetNode( _id.GetNodeId() ) ) != NULL)
 	    {
 			CommandClass* cc = node->GetCommandClass( _id.GetCommandClassId() );
 			if (cc) {
@@ -2612,7 +2576,6 @@ bool Manager::RefreshValue
                                 bRet = false;
                         }
 		}
-		driver->ReleaseNodes();
 	}
 	return bRet;
 }
@@ -2629,13 +2592,12 @@ void Manager::SetChangeVerified
 {
 	if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		if( Value* value = driver->GetValue( _id ) )
 		{
 			value->SetChangeVerified( _verify );
 			value->Release();
 		}
-		driver->ReleaseNodes();
 	}
 }
 
@@ -2654,13 +2616,12 @@ bool Manager::PressButton
 	{
 		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 		{
-			driver->LockNodes();
+			LockGuard LG(driver->m_nodeMutex);
 			if( ValueButton* value = static_cast<ValueButton*>( driver->GetValue( _id ) ) )
 			{
 				res = value->PressButton();
 				value->Release();
 			}
-			driver->ReleaseNodes();
 		}
 	}
 
@@ -2682,13 +2643,12 @@ bool Manager::ReleaseButton
 	{
 		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 		{
-			driver->LockNodes();
+			LockGuard LG(driver->m_nodeMutex);
 			if( ValueButton* value = static_cast<ValueButton*>( driver->GetValue( _id ) ) )
 			{
 				res = value->ReleaseButton();
 				value->Release();
 			}
-			driver->ReleaseNodes();
 		}
 	}
 
@@ -2715,13 +2675,12 @@ uint8 Manager::GetNumSwitchPoints
 	{
 		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 		{
-			driver->LockNodes();
+			LockGuard LG(driver->m_nodeMutex);
 			if( ValueSchedule* value = static_cast<ValueSchedule*>( driver->GetValue( _id ) ) )
 			{
 				numSwitchPoints = value->GetNumSwitchPoints();
 				value->Release();
 			}
-			driver->ReleaseNodes();
 		}
 	}
 
@@ -2746,13 +2705,12 @@ bool Manager::SetSwitchPoint
 	{
 		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 		{
-			driver->LockNodes();
+			LockGuard LG(driver->m_nodeMutex);
 			if( ValueSchedule* value = static_cast<ValueSchedule*>( driver->GetValue( _id ) ) )
 			{
 				res = value->SetSwitchPoint( _hours, _minutes, _setback );
 				value->Release();
 			}
-			driver->ReleaseNodes();
 		}
 	}
 
@@ -2776,7 +2734,7 @@ bool Manager::RemoveSwitchPoint
 	{
 		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 		{
-			driver->LockNodes();
+			LockGuard LG(driver->m_nodeMutex);
 			if( ValueSchedule* value = static_cast<ValueSchedule*>( driver->GetValue( _id ) ) )
 			{
 				uint8 idx;
@@ -2788,7 +2746,6 @@ bool Manager::RemoveSwitchPoint
 				}
 				value->Release();
 			}
-			driver->ReleaseNodes();
 		}
 	}
 
@@ -2808,13 +2765,12 @@ void Manager::ClearSwitchPoints
 	{
 		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 		{
-			driver->LockNodes();
+			LockGuard LG(driver->m_nodeMutex);
 			if( ValueSchedule* value = static_cast<ValueSchedule*>( driver->GetValue( _id ) ) )
 			{
 				value->ClearSwitchPoints();
 				value->Release();
 			}
-			driver->ReleaseNodes();
 		}
 	}
 }
@@ -2838,13 +2794,12 @@ bool Manager::GetSwitchPoint
 	{
 		if( Driver* driver = GetDriver( _id.GetHomeId() ) )
 		{
-			driver->LockNodes();
+			LockGuard LG(driver->m_nodeMutex);
 			if( ValueSchedule* value = static_cast<ValueSchedule*>( driver->GetValue( _id ) ) )
 			{
 				res = value->GetSwitchPoint( _idx, o_hours, o_minutes, o_setback );
 				value->Release();
 			}
-			driver->ReleaseNodes();
 		}
 	}
 
@@ -2939,11 +2894,11 @@ void Manager::RequestAllConfigParams
 {
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
+		LockGuard LG(driver->m_nodeMutex);
 		Node* node = driver->GetNode( _nodeId );
 		if( node )
 		{
 			node->SetQueryStage( Node::QueryStage_Configuration );
-			driver->ReleaseNodes();
 		}
 	}
 }
@@ -3271,6 +3226,7 @@ void Manager::HealNetworkNode
 {
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
+		LockGuard LG(driver->m_nodeMutex);
 		Node* node = driver->GetNode( _nodeId );
 		if( node )
 		{
@@ -3279,7 +3235,6 @@ void Manager::HealNetworkNode
 			{
 				driver->UpdateNodeRoutes( _nodeId, true );
 			}
-			driver->ReleaseNodes();
 		}
 	}
 }
@@ -3296,7 +3251,7 @@ void Manager::HealNetwork
 {
 	if( Driver* driver = GetDriver( _homeId ) )
 	{
-		driver->LockNodes();
+		LockGuard LG(driver->m_nodeMutex);
 		for( uint8 i=0; i<255; i++ )
 		{
 			if( driver->m_nodes[i] != NULL )
@@ -3308,7 +3263,6 @@ void Manager::HealNetwork
 				}
 			}
 		}
-		driver->ReleaseNodes();
 	}
 }
 
