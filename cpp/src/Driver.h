@@ -681,7 +681,8 @@ OPENZWAVE_EXPORT_WARNINGS_ON
 				m_nodeId(0),
 				m_queryStage(Node::QueryStage_None),
 				m_retry(false),
-				m_cci(NULL)
+				m_cci(NULL),
+				m_delay(0)
 		  	{}
 
 			bool operator == ( MsgQueueItem const& _other )const
@@ -711,6 +712,7 @@ OPENZWAVE_EXPORT_WARNINGS_ON
 			Node::QueryStage		m_queryStage;
 			bool				m_retry;
 			ControllerCommandItem*		m_cci;
+			unsigned int 		m_delay;
 		};
 
 		const list<MsgQueueItem>* getMsgQueues() const {return m_msgQueue;}

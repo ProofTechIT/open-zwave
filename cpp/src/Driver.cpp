@@ -49,6 +49,7 @@
 #include "command_classes/SwitchAll.h"
 #include "command_classes/ManufacturerSpecific.h"
 #include "command_classes/NoOperation.h"
+#include "command_classes/Configuration.h"
 
 #include "value_classes/ValueID.h"
 #include "value_classes/Value.h"
@@ -966,6 +967,8 @@ void Driver::SendMsg
 
 	item.m_command = MsgQueueCmd_SendMsg;
 	item.m_msg = _msg;
+	if (_msg->GetSendingCommandClass() == Configuration::StaticGetCommandClassId())
+		item.m_delay = 1000;
 	_msg->Finalize();
 
 
@@ -1047,7 +1050,13 @@ bool Driver::WriteNextMsg
 			m_queueEvent[_queue]->Reset();
 		}
 		m_sendMutex->Unlock();
-		return WriteMsg( "WriteNextMsg" );
+
+		bool res = WriteMsg( "WriteNextMsg" );
+		if(item.m_delay > 0) {
+			Log::Write( LogLevel_Detail, "Waiting %d ms", item.m_delay );
+			usleep( item.m_delay*1000 );
+		}
+		return res;
 	}
 
 	if( MsgQueueCmd_QueryStageComplete == item.m_command )
