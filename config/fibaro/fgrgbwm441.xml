@@ -24,10 +24,10 @@
       <Item label="MODE 1 - Constant Speed (speed is defined by parameters 9 and 10)" value="0" />
       <Item label="MODE 2 - Constant Time (RGB/RBGW only. Time is defined by parameter 11)" value="1" />
     </Value>
-    <Value type="byte" genre="config" instance="1" index="9" label="Dimming step value (for MODE 1)" min="1" max="99" units="" value="1">
+    <Value type="byte" genre="config" instance="1" index="9" label="Dimming step value (for MODE 1)" min="1" max="99" units="" value="99">
       <Help>Size of the step for each change in level during the transition.</Help>
     </Value>   
-    <Value type="short" genre="config" instance="1" index="10" label="Time between dimming steps (for MODE 1)" min="0" max="60000" units="ms" value="10">
+    <Value type="short" genre="config" instance="1" index="10" label="Time between dimming steps (for MODE 1)" min="0" max="60000" units="ms" value="0">
       <Help>Time between each step in a transition between levels.  Setting this to zero means an instantaneous change.</Help>
     </Value>
     <Value type="byte" genre="config" instance="1" index="11" label="Time to complete the entire transition (for MODE 2)" min="0" max="255" units="" value="67">
