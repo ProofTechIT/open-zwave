@@ -104,4 +104,24 @@
   <!-- Remove COMMAND_CLASS_BASIC -->
   <CommandClass id="32" action="remove" />
 
+  <CommandClass id="38">
+    <Value type="byte" genre="user" instance="1" index="0" label="Level" min="0" max="255" units="" verify_changes="true">
+      <Help>General brightness level (1).</Help>
+    </Value>
+    <Value type="byte" genre="user" instance="2" index="0" label="Level" min="0" max="255" units="" verify_changes="true">
+      <Help>General brightness level (2).</Help>
+    </Value>
+    <Value type="byte" genre="user" instance="3" index="0" label="Level" min="0" max="255" units="" verify_changes="true">
+      <Help>Brightness level (Red).</Help>
+    </Value>
+    <Value type="byte" genre="user" instance="4" index="0" label="Level" min="0" max="255" units="" verify_changes="true">
+      <Help>Brightness level (Green).</Help>
+    </Value>
+    <Value type="byte" genre="user" instance="5" index="0" label="Level" min="0" max="255" units="" verify_changes="true">
+      <Help>Brightness level (Blue).</Help>
+    </Value>
+    <Value type="byte" genre="user" instance="6" index="0" label="Level" min="0" max="255" units="" verify_changes="true">
+      <Help>Brightness level (White).</Help>
+    </Value>
+  </CommandClass>
 </Product>
