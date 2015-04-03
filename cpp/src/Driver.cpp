@@ -6295,6 +6295,15 @@ void Driver::LogDriverStatistics
 	Log::Write( LogLevel_Always, "Messages retransmitted: . . . . . . . . . . . . . . . . . %ld", data.m_retries );
 	Log::Write( LogLevel_Always, "Messages dropped and not delivered: . . . . . . . . . . . %ld", data.m_dropped );
 	Log::Write( LogLevel_Always, "***************************************************************************" );
+	Log::Write( LogLevel_Always, "Number of unexpected callbacks: . . . . . . . . . . . . . %ld", data.m_callbacks);
+	Log::Write( LogLevel_Always, "Number of failed messages due to bad route response:  . . %ld", data.m_badroutes);
+	Log::Write( LogLevel_Always, "Number of no ACK returned errors: . . . . . . . . . . . . %ld", data.m_noack);
+	Log::Write( LogLevel_Always, "Number of network busy/failure messages:  . . . . . . . . %ld", data.m_netbusy);
+	Log::Write( LogLevel_Always, "Not idle: . . . . . . . . . . . . . . . . . . . . . . . . %ld", data.m_notidle);
+	Log::Write( LogLevel_Always, "Number of messages not delivered to network:  . . . . . . %ld", data.m_nondelivery);
+	Log::Write( LogLevel_Always, "Number of messages received with routed busy status:  . . %ld", data.m_routedbusy);
+	Log::Write( LogLevel_Always, "Number of broadcasts read:  . . . . . . . . . . . . . . . %ld", data.m_broadcastReadCnt);
+	Log::Write( LogLevel_Always, "Number of broadcasts sent:  . . . . . . . . . . . . . . . %ld", data.m_broadcastWriteCnt);
 }
 
 //-----------------------------------------------------------------------------
