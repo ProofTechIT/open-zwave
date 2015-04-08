@@ -104,6 +104,9 @@
   <!-- Remove COMMAND_CLASS_BASIC -->
   <CommandClass id="32" action="remove" />
 
+  <!-- Remove COMMAND_CLASS_POWERLEVEL -->
+  <CommandClass id="115" action="remove" />
+
   <CommandClass id="38">
     <Value type="byte" genre="user" instance="1" index="0" label="Level" min="0" max="255" units="" verify_changes="true">
       <Help>General brightness level (1).</Help>
