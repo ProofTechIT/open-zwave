@@ -50,6 +50,8 @@
 #include "command_classes/ManufacturerSpecific.h"
 #include "command_classes/NoOperation.h"
 #include "command_classes/Configuration.h"
+#include "command_classes/MultiInstance.h"
+#include "command_classes/SwitchMultilevel.h"
 
 #include "value_classes/ValueID.h"
 #include "value_classes/Value.h"
@@ -972,7 +974,9 @@ void Driver::SendMsg
 
 	item.m_command = MsgQueueCmd_SendMsg;
 	item.m_msg = _msg;
-	if (_msg->GetSendingCommandClass() == Configuration::StaticGetCommandClassId())
+	if (_msg->GetSendingCommandClass() == Configuration::StaticGetCommandClassId() ||
+		_msg->GetSendingCommandClass() == SwitchMultilevel::StaticGetCommandClassId() ||
+		_msg->GetSendingCommandClass() == MultiInstance::StaticGetCommandClassId())
 		item.m_delay = 1000;
 	_msg->Finalize();
 	{
