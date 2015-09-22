@@ -355,4 +355,9 @@
     </Associations>
   </CommandClass>
 
+  <CommandClass id="48">
+    <Value type="bool" genre="user" instance="1" index="0" label="Sensor" verify_changes="true">
+      <Help>Sensor value</Help>
+    </Value>
+  </CommandClass>
 </Product>
