@@ -111,7 +111,7 @@ Node::Node
 ):
 	m_queryStage( QueryStage_None ),
 	m_queryPending( false ),
-	m_queryConfiguration( false ),
+	m_queryConfiguration( true ),
 	m_queryRetries( 0 ),
 	m_protocolInfoReceived( false ),
 	m_nodeInfoReceived( false ),
@@ -1722,9 +1722,16 @@ bool Node::RequestAllConfigParams
 		for( ValueStore::Iterator it = m_values->Begin(); it != m_values->End(); ++it )
 		{
 			Value* value = it->second;
-			if( value->GetID().GetCommandClassId() == Configuration::StaticGetCommandClassId() && !value->IsWriteOnly() )
+			if( value->GetID().GetCommandClassId() == Configuration::StaticGetCommandClassId() )
 			{
-				res |= cc->RequestValue( _requestFlags, value->GetID().GetIndex(), 1, Driver::MsgQueue_Send );
+				if( !value->IsOverridden() && !value->IsWriteOnly())
+				{
+					res |= cc->RequestValue( _requestFlags, value->GetID().GetIndex(), 1, Driver::MsgQueue_Send );
+				}
+				if( value->IsOverridden() && !value->IsReadOnly() )
+				{
+					res |= cc->SetValue( *value );
+				}
 			}
 		}
 	}

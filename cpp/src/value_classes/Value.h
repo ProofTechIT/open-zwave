@@ -56,6 +56,7 @@ namespace OpenZWave
 		ValueID const& GetID()const{ return m_id; }
 		bool IsReadOnly()const{ return m_readOnly; }
 		bool IsWriteOnly()const{ return m_writeOnly; }
+		bool IsOverridden()const{ return m_isOverridden; }
 		bool IsSet()const{ return m_isSet; }
 		bool IsPolled()const{ return m_pollIntensity != 0; }
 
@@ -110,6 +111,7 @@ namespace OpenZWave
 		string		m_help;
 		bool		m_readOnly;
 		bool		m_writeOnly;
+		bool		m_isOverridden;
 		bool		m_isSet;
 		uint8		m_affectsLength;
 		uint8*		m_affects;

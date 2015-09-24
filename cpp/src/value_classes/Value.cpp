@@ -92,6 +92,7 @@ Value::Value
 	m_help( "" ),
 	m_readOnly( _readOnly ),
 	m_writeOnly( _writeOnly ),
+	m_isOverridden( false ),
 	m_isSet( _isSet ),
 	m_affectsLength( 0 ),
 	m_affects(),
@@ -190,6 +191,12 @@ void Value::ReadXML
 	if( writeOnly )
 	{
 		m_writeOnly = !strcmp( writeOnly, "true" );
+	}
+
+	char const* isOverridden = _valueElement->Attribute( "override" );
+	if( isOverridden )
+	{
+		m_isOverridden = !strcmp( isOverridden, "true" );
 	}
 
 	if( TIXML_SUCCESS == _valueElement->QueryIntAttribute( "poll_intensity", &intVal ) )
