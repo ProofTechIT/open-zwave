@@ -22,12 +22,12 @@
 				Set Lux timer trigger to send an OFF command. 0 will clear the value.
 			</Help>
 		</Value>
-		<Value type="short" index="5" genre="config" label="Auto Report Time" units="minutes" min="0" max="1439" value="1">
+		<Value type="short" index="5" genre="config" label="Auto Report Time" units="minutes" min="0" max="1439" value="1" override="true">
 			<Help>
 				Sets the auto report time interval. 0 disables.
 			</Help>
 		</Value>
-		<Value type="short" index="6" genre="config" label="Auto Report Lux" units="LUX" min="30" max="1000" value="30">
+		<Value type="short" index="6" genre="config" label="Auto Report Lux" units="LUX" min="30" max="1000" value="30" override="true">
 			<Help>
 				Sets the auto report Lux interval. 0 disabled.
 			</Help>
