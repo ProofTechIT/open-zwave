@@ -193,9 +193,6 @@ namespace OpenZWave
 		uint32 GetHomeId()const{ return m_homeId; }
 		uint8 GetNodeId()const{ return m_nodeId; }
 		uint8 GetSUCNodeId()const{ return m_SUCNodeId; }
-		uint16 GetManufacturerId()const{ return m_manufacturerId; }
-		uint16 GetProductType()const{ return m_productType; }
-		uint16 GetProductId()const{ return m_productId; }
 		string GetControllerPath()const{ return m_controllerPath; }
 		ControllerInterface GetControllerInterfaceType()const{ return m_controllerInterfaceType; }
 		string GetLibraryVersion()const{ return m_libraryVersion; }
@@ -211,6 +208,10 @@ namespace OpenZWave
 		}
 
 public:
+		uint16 GetManufacturerId()const{ return m_manufacturerId; }
+		uint16 GetProductType()const{ return m_productType; }
+		uint16 GetProductId()const{ return m_productId; }
+
 		/**
 		 *  A version of GetNode that does not have the protective "lock" and "release" requirement.
 		 *  This function can be used within driverThread, which "knows" that the node will not be
