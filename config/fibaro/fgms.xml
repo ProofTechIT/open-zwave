@@ -29,7 +29,7 @@
 		Default setting: 10
 	</Help>
     </Value>
-    <Value type="byte" genre="config" instance="1" index="2" label="Motion sensor's blind time (insensitivity)" min="0" max="15" value="15">
+    <Value type="byte" genre="config" instance="1" index="2" label="Motion sensor's blind time (insensitivity)" min="0" max="15" value="15" override="true">
 	<Help>
 		Period of time through which the PIR sensor is "blind" (insensitive) to
 		motion. After this time period the PIR sensor will be again able to
@@ -71,7 +71,7 @@
 	<Item label="12 seconds" value="2" />
 	<Item label="16 seconds" value="3" />
     </Value>
-    <Value type="short" genre="config" instance="1" index="6" label="Motion alarm cancellation delay" min="0" max="65535" value="30">
+    <Value type="short" genre="config" instance="1" index="6" label="Motion alarm cancellation delay" min="0" max="65535" value="5" override="true">
 	<Help>
 		Motion alarm will be cancelled in the main controller and the
 		associated devices after the period of time set in this parameter. Any
